@@ -172,7 +172,7 @@ class SimulationCog(commands.Cog):
             else:
                 results = pokemon.toStr(*pokemon.sim(badge))
             embed = discord.Embed(
-                title=f"{'✨ **Shiny** ' if pokemon.shiny else ''}{name} #{i+1}",
+                title=f"{'✨ Shiif pokemon.shiny else ''}{name} #{i+1}",
                 description="The results of the simulation",
                 color=discord.Color.random()
             )
