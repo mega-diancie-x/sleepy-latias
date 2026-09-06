@@ -1,7 +1,8 @@
 from random import random, randint, choice, choices
 import numpy as np
-from numba import njit, prange
+from numba import njit, prange, atomic
 import time
+import asyncio
 
 import discord
 from discord import app_commands
@@ -54,6 +55,7 @@ SPECIES_BADGE_LIST = {
 }
 
 masterDB = None
+masterDB_task = None
 
 # Change later if needed
 SAMPLES_PER_BRACKET = 96_040_000
@@ -93,7 +95,7 @@ def _generateMasterDB() -> np.ndarray:
                     allWhite = True
                     for k in range(4):
                         # White subskills are 13-16
-                        if db[golds, i, k] < 13: 
+                        if db[golds, i, k] < 13:
                             allWhite = False
                             break
                     if allWhite:
@@ -137,6 +139,7 @@ def _generateMasterDB() -> np.ndarray:
 
     return db
 
+
 def generateMasterDB() -> np.ndarray:
     # Helper function for time measurement
     start = time.time()
@@ -149,44 +152,58 @@ def _queryDatabase(db, reqSubskills, optSubskills=None, optAmount=0, nature1=Non
     """
     Checks the database for matches to the given subskills and natures. Returns a list of hits for each bracket (4 total).
     """
-    thread_hits = np.zeros((4, SAMPLES_PER_BRACKET), dtype=np.int8)
+    hits = np.zeros(4, dtype=np.int32)
     num_req = len(reqSubskills)
     max_idx = searchRange
 
-    for _ in range(4):
+    for bracket in range(4):
         for i in prange(SAMPLES_PER_BRACKET):
             # 1. Quick Filters (Natures and Ingredients)
-            if nature1 is not None and db[_, i, 5] not in nature1:
-                continue
-            if nature2 is not None and db[_, i, 6] not in nature2:
-                continue
-            if natureNot is not None and db[_, i, 6] in natureNot:
-                continue
+            if nature1 is not None:
+                # check membership manually
+                found = False
+                for nn in range(len(nature1)):
+                    if db[bracket, i, 5] == nature1[nn]:
+                        found = True
+                        break
+                if not found:
+                    continue
+            if nature2 is not None:
+                found = False
+                for nn in range(len(nature2)):
+                    if db[bracket, i, 6] == nature2[nn]:
+                        found = True
+                        break
+                if not found:
+                    continue
+            if natureNot is not None:
+                found = False
+                for nn in range(len(natureNot)):
+                    if db[bracket, i, 6] == natureNot[nn]:
+                        found = True
+                        break
+                if found:
+                    continue
             if ings != -1:
                 # Handle special case with AAX (110)
                 if ings % 10 == 0:
-                    if db[_, i, 7] // 10 != ings // 10:
+                    if db[bracket, i, 7] // 10 != ings // 10:
                         continue
                 else:
-                    if db[_, i, 7] != ings:
+                    if db[bracket, i, 7] != ings:
                         continue
-
-            # Extract currently unlocked active subskills based on search range
-            active_subs = db[_, i, :max_idx]
 
             # 2. Required Subskills Check
             req_found = 0
-            # Track which specific slot indices were used to satisfy the requirements
-            used_slots = np.zeros(5, dtype=np.bool_) 
+            used_slots = np.zeros(max_idx, dtype=np.bool_)
 
             for r_idx in range(num_req):
                 req_target = reqSubskills[r_idx]
                 matched = False
 
                 # Direct Match
-                for s_idx in range(len(active_subs)):
-                    # Prevent same slot from being used twice
-                    if (not used_slots[s_idx]) and active_subs[s_idx] == req_target:
+                for s_idx in range(max_idx):
+                    if (not used_slots[s_idx]) and db[bracket, i, s_idx] == req_target:
                         used_slots[s_idx] = True
                         req_found += 1
                         matched = True
@@ -196,27 +213,42 @@ def _queryDatabase(db, reqSubskills, optSubskills=None, optAmount=0, nature1=Non
 
                 # Subseed Match
                 if allowSeeds:
-                    if req_target in to_subseed_values:
-                        # Find base skill that can be seeded to target skill
-                        k_idx = np.where(to_subseed_values == req_target)[0][0]
+                    # search to_subseed_values manually
+                    k_idx = -1
+                    for kk in range(len(to_subseed_values)):
+                        if to_subseed_values[kk] == req_target:
+                            k_idx = kk
+                            break
+                    if k_idx != -1:
                         base_skill = to_subseed_keys[k_idx]
-
-                        if req_target not in db[_, i, :5]:
-                            # Check if base skill is present and unused
-                            for s_idx in range(len(active_subs)):
-                                if (not used_slots[s_idx]) and active_subs[s_idx] == base_skill:
+                        # check if req_target present in first five
+                        present = False
+                        for p in range(5):
+                            if db[bracket, i, p] == req_target:
+                                present = True
+                                break
+                        if not present:
+                            for s_idx in range(max_idx):
+                                if (not used_slots[s_idx]) and db[bracket, i, s_idx] == base_skill:
                                     used_slots[s_idx] = True
                                     req_found += 1
                                     matched = True
                                     break
 
-                    if not matched and req_target == 11 and 11 not in db[_, i, :5]:
-                        # Special case for Inventory Up L (11) from Inventory Up S (16), subseed twice
-                        for s_idx in range(len(active_subs)):
-                            if (not used_slots[s_idx]) and active_subs[s_idx] == 16:
-                                used_slots[s_idx] = True
-                                req_found += 1
+                    if not matched:
+                        # special double-subseed case for 11 from 16
+                        present11 = False
+                        for p in range(5):
+                            if db[bracket, i, p] == 11:
+                                present11 = True
                                 break
+                        if req_target == 11 and not present11:
+                            for s_idx in range(max_idx):
+                                if (not used_slots[s_idx]) and db[bracket, i, s_idx] == 16:
+                                    used_slots[s_idx] = True
+                                    req_found += 1
+                                    matched = True
+                                    break
 
             if req_found < num_req:
                 continue
@@ -228,10 +260,10 @@ def _queryDatabase(db, reqSubskills, optSubskills=None, optAmount=0, nature1=Non
                     opt_target = optSubskills[o_idx]
                     matched = False
 
-                    # Direct Match (must NOT use a slot already taken by required skills)
-                    for s_idx in range(len(active_subs)):
-                        if (not used_slots[s_idx]) and active_subs[s_idx] == opt_target:
-                            used_slots[s_idx] = True 
+                    # Direct Match
+                    for s_idx in range(max_idx):
+                        if (not used_slots[s_idx]) and db[bracket, i, s_idx] == opt_target:
+                            used_slots[s_idx] = True
                             opt_found += 1
                             matched = True
                             break
@@ -240,35 +272,48 @@ def _queryDatabase(db, reqSubskills, optSubskills=None, optAmount=0, nature1=Non
 
                     # Subseed Match
                     if allowSeeds:
-                        if opt_target in to_subseed_values:
-                            k_idx = np.where(to_subseed_values == opt_target)[0][0]
+                        k_idx = -1
+                        for kk in range(len(to_subseed_values)):
+                            if to_subseed_values[kk] == opt_target:
+                                k_idx = kk
+                                break
+                        if k_idx != -1:
                             base_skill = to_subseed_keys[k_idx]
-
-                            if opt_target not in db[_, i, :5]:
-                                for s_idx in range(len(active_subs)):
-                                    if (not used_slots[s_idx]) and active_subs[s_idx] == base_skill:
+                            present = False
+                            for p in range(5):
+                                if db[bracket, i, p] == opt_target:
+                                    present = True
+                                    break
+                            if not present:
+                                for s_idx in range(max_idx):
+                                    if (not used_slots[s_idx]) and db[bracket, i, s_idx] == base_skill:
                                         used_slots[s_idx] = True
                                         opt_found += 1
                                         matched = True
                                         break
 
-                        if not matched and opt_target == 11 and 11 not in db[_, i, :5]:
-                            for s_idx in range(len(active_subs)):
-                                if (not used_slots[s_idx]) and active_subs[s_idx] == 16:
-                                    used_slots[s_idx] = True
-                                    opt_found += 1
+                        if not matched:
+                            present11 = False
+                            for p in range(5):
+                                if db[bracket, i, p] == 11:
+                                    present11 = True
                                     break
+                            if opt_target == 11 and not present11:
+                                for s_idx in range(max_idx):
+                                    if (not used_slots[s_idx]) and db[bracket, i, s_idx] == 16:
+                                        used_slots[s_idx] = True
+                                        opt_found += 1
+                                        matched = True
+                                        break
 
                 if opt_found < optAmount:
                     continue
-                    
-            thread_hits[_, i] = 1
 
-    hits = np.zeros(4, dtype=np.int32)
-    for b in range(4):
-        hits[b] = np.sum(thread_hits[b])
+            # Passed all checks: increment hit counter for this bracket
+            atomic.add(hits, bracket, 1)
 
     return hits
+
 
 def queryDatabase(db, reqSubskills, optSubskills = None, optAmount = 0, nature1 = -1, nature2 = -1, natureNot = -1, ings = -1, searchRange: int = 3, allowSeeds = False):
     # Helper function for time measurement
@@ -279,86 +324,79 @@ def queryDatabase(db, reqSubskills, optSubskills = None, optAmount = 0, nature1 
 
 @njit(parallel=True)
 def _score_query_db(db, subskill_scores, nature_up_scores, nature_down_scores, req_score, ings = -1, searchRange: int = 3, allowSeeds=False):
-    thread_score = np.zeros((4, SAMPLES_PER_BRACKET), dtype=np.int16)
-    thread_hits = np.zeros((4, SAMPLES_PER_BRACKET), dtype=np.int8)
+    scores = np.zeros(4, dtype=np.int64)
+    hits = np.zeros(4, dtype=np.int32)
     max_idx = searchRange
 
-    for _ in range(4):
+    for bracket in range(4):
         for i in prange(SAMPLES_PER_BRACKET):
             # 1. Quick Filters (Ingredients)
             if ings != -1:
-                # Handle special case with AAX (110)
                 if ings % 10 == 0:
-                    if db[_, i, 7] // 10 != ings // 10:
+                    if db[bracket, i, 7] // 10 != ings // 10:
                         continue
                 else:
-                    if db[_, i, 7] != ings:
+                    if db[bracket, i, 7] != ings:
                         continue
 
-            # Extract currently unlocked active subskills based on search range
-            active_subs = np.ascontiguousarray(db[_, i, :max_idx])
             score = 0
-            # Track which specific slot indices were used to satisfy the requirements
-            used_slots = np.zeros(5, dtype=np.bool_)
-            
+            used_slots = np.zeros(max_idx, dtype=np.bool_)
+
             # 2. Subskill Score
-            for s_idx in range(len(active_subs)):
-                # Temporary Debug
-                # FIX LATER: Data mismatch between DB and subskill_scores
-                ""l
-                if i == 0 and _ == 0:
-                    print("Skill from DB:", active_subs[s_idx], "Type:", type(active_subs[s_idx]))
-                    print("Is skill in scores dict?:", active_subs[s_idx] in subskill_scores)
+            for s_idx in range(max_idx):
                 # Subseed matching
+                val = db[bracket, i, s_idx]
                 if allowSeeds:
                     # Special Case with Inventory Up L (11) and Inventory Up S (16)
-                    if active_subs[s_idx] == 16 and 11 not in db[_, i, :5] and not used_slots[s_idx]:
+                    present11 = False
+                    for p in range(5):
+                        if db[bracket, i, p] == 11:
+                            present11 = True
+                            break
+                    if val == 16 and (not present11) and (not used_slots[s_idx]):
                         if subskill_scores[11] > subskill_scores[16]:
                             used_slots[s_idx] = True
                             score += subskill_scores[11]
                             continue
-        
-                    if active_subs[s_idx] in to_subseed_keys:
-                        # Find subseed skill
-                        k_idx = np.where(to_subseed_keys == active_subs[s_idx])[0][0]
+
+                    # check if val is a base skill that can subseed
+                    k_idx = -1
+                    for kk in range(len(to_subseed_keys)):
+                        if to_subseed_keys[kk] == val:
+                            k_idx = kk
+                            break
+                    if k_idx != -1 and (not used_slots[s_idx]):
                         after_skill = to_subseed_values[k_idx]
-                        # Check if subseed brings a higher score
-                        if after_skill not in db[_, i, :5] and not used_slots[s_idx]:
-                            if (subskill_scores[after_skill] > subskill_scores[active_subs[s_idx]]):
-                                used_slots[s_idx] = True
-                                score += subskill_scores[after_skill]
-                        # If not, check if the base skill is better
-                        elif active_subs[s_idx] not in db[_, i, :5] and not used_slots[s_idx]:
+                        # check presence of after_skill in first five
+                        present_after = False
+                        for p in range(5):
+                            if db[bracket, i, p] == after_skill:
+                                present_after = True
+                                break
+                        if (not present_after) and (subskill_scores[after_skill] > subskill_scores[val]):
                             used_slots[s_idx] = True
-                            score += subskill_scores[active_subs[s_idx]]
-                    else:
-                        # Direct Match
-                        if not used_slots[s_idx]:
-                            used_slots[s_idx] = True
-                            score += subskill_scores[active_subs[s_idx]]
-                else:
-                    # Direct Match
-                    if not used_slots[s_idx]:
-                        used_slots[s_idx] = True
-                        score += subskill_scores[active_subs[s_idx]]
-                
+                            score += subskill_scores[after_skill]
+                            continue
+
+                # Direct match if slot not used
+                if not used_slots[s_idx]:
+                    used_slots[s_idx] = True
+                    score += subskill_scores[val]
+
             # 3. Nature Score
-            if db[_, i, 5] in nature_up_scores:
-                score += nature_up_scores[db[_, i, 5]]
-            if db[_, i, 6] in nature_down_scores:
-                score -= nature_down_scores[db[_, i, 6]]
+            # add/subtract based on nature arrays
+            n5 = db[bracket, i, 5]
+            n6 = db[bracket, i, 6]
+            # nature_up_scores and nature_down_scores are dense arrays
+            score += nature_up_scores[n5]
+            score -= nature_down_scores[n6]
 
-            thread_score[_, i] = score
+            atomic.add(scores, bracket, score)
             if score >= req_score:
-                thread_hits[_, i] = 1
-
-    scores = np.zeros(4, dtype=np.int32)
-    hits = np.zeros(4, dtype=np.int32)
-    for i in range(4):
-        scores[i] = np.sum(thread_score[i])
-        hits[i] = np.sum(thread_hits[i])
+                atomic.add(hits, bracket, 1)
 
     return [scores, hits]
+
 
 def score_query_db(db, subskill_scores, nature_up_scores, nature_down_scores, req_score, ings = -1, searchRange: int = 3, allowSeeds=False):
     # Helper function for time measurement
@@ -435,7 +473,7 @@ def generateEmbed(hits, reqSubskills, optSubskills = None, optAmount = 0, nature
         natureNotStr = "<:ndown:1522481223815921734> " + "/".join(ID_TO_NATURES[int(n)] for n in natureNot) + " (Excluded)"
         embed.add_field(name="Excluded Nature", value=natureNotStr, inline=True)
     if ings != -1:
-        embed.add_field(name="Required Ingredients", value=ID_TO_INGS[ings], inline=True)
+        embed.add_field(name="Required Ingredients", value=ID_TO_INGS.get(ings, str(ings)), inline=True)
 
     hitsStr = ""
     for i in range(4):
@@ -444,12 +482,15 @@ def generateEmbed(hits, reqSubskills, optSubskills = None, optAmount = 0, nature
 
     embed.add_field(name="Base Odds", value=hitsStr, inline=False)
 
-    if cumulative != -1: 
+    if cumulative != -1 and cumulative > 0:
         cumulativeStr = ""
-        for i in range(cumulative // 10):
-            cumulativeStr += f"Odds at Catch #{i * 10}: {cumulative_probability(hits[0] / SAMPLES_PER_BRACKET, hits[1] / SAMPLES_PER_BRACKET, hits[2] / SAMPLES_PER_BRACKET, hits[3] / SAMPLES_PER_BRACKET, goldCap, species, i * 10) * 100:.3f}%"
-            cumulativeStr += "\n"
-        cumulativeStr += f"Odds at Catch #{cumulative}: {cumulative_probability(hits[0] / SAMPLES_PER_BRACKET, hits[1] / SAMPLES_PER_BRACKET, hits[2] / SAMPLES_PER_BRACKET, hits[3] / SAMPLES_PER_BRACKET, goldCap, species, cumulative) * 100:.3f}%"
+        # report every 10 catches and the final value
+        max_step = cumulative // 10
+        for step in range(1, max_step + 1):
+            catch = step * 10
+            cumulativeStr += f"Odds at Catch #{catch}: {cumulative_probability(hits[0] / SAMPLES_PER_BRACKET, hits[1] / SAMPLES_PER_BRACKET, hits[2] / SAMPLES_PER_BRACKET, hits[3] / SAMPLES_PER_BRACKET, goldCap, species, catch):.6f}\n"
+        if cumulative % 10 != 0:
+            cumulativeStr += f"Odds at Catch #{cumulative}: {cumulative_probability(hits[0] / SAMPLES_PER_BRACKET, hits[1] / SAMPLES_PER_BRACKET, hits[2] / SAMPLES_PER_BRACKET, hits[3] / SAMPLES_PER_BRACKET, goldCap, species, cumulative):.6f}\n"
         embed.add_field(name="Cumulative Probability", value=cumulativeStr, inline=False)
 
     return embed
@@ -459,7 +500,7 @@ class ProbabilityCog(commands.Cog):
         self.bot = bot
 
     @app_commands.command(name="probability", description="Calculate the probability of a Pokemon having certain subskills")
-    @app_commands.describe(allow_subseeds="Allow the usage of Subskill Seeds to reach the requirements", required_subskills="The subskill IDs you want to search for (Must match all) (Separate by comma)", optional_subskills="The subskill IDs you want to search for (Optional) (Separate by comma) (Default: None)", optional_amount="The number of optional subskills you want to search for (Default: 1)", nature_up="The increasing stat(s) you want to search for (Separate by comma) (Default: Any)", nature_down="The decreasing stat(s) you want to search for (Separate by comma) (Default: Any)", nature_down_exclude="The decreasing stat(s) you want to avoid (Separate by comma) (Default: Accept All)", ingredients="The ingredient combination you want to search for (Default: None)", cumulative="The number of catches you want to calculate the cumulative probability for (Default: None)", gold_cap="The number of guaranteed gold subskills you want to cap at (Default: 3)", species="The species type of the Pokemon", search_range="The range of subskills you want to search for (Default: Lv. 50")
+    @app_commands.describe(allow_subseeds="Allow the usage of Subskill Seeds to reach the requirements", required_subskills="The subskill IDs you want to search for (Must match all) (Separate by comma[...]")
     @app_commands.choices(
         ingredients = [
             Choice(name="AAX (Lv60 any)", value=110),
@@ -491,7 +532,12 @@ class ProbabilityCog(commands.Cog):
             Choice(name="Lv. 80", value=5)
         ]
     )
-    async def probability(self, interaction: discord.Interaction, required_subskills: str, species: int, allow_subseeds: bool, optional_subskills: str = None, optional_amount: int = 1, nature_up: str = None, nature_down: str = None, nature_down_exclude: str = None, ingredients: int = -1, cumulative: int = -1, gold_cap: int = 3, search_range: int = 3):
+    async def probability(self, interaction: discord.Interaction, required_subskills: str, species: int, allow_subseeds: bool, optional_subskills: str = None, optional_amount: int = 1, nature_up=None, nature_down=None, nature_down_exclude=None, ingredients: int = -1, cumulative: int = -1, gold_cap: int = 3, search_range: int = 3):
+        # Ensure DB is ready before doing expensive operations
+        if masterDB is None:
+            await interaction.response.send_message("The probability database is still building. Please try again in a few minutes.", ephemeral=True)
+            return
+
         if required_subskills == "":
             await interaction.response.send_message("You must specify at least one required subskill.", ephemeral=True)
             return
@@ -569,7 +615,7 @@ class ProbabilityCog(commands.Cog):
         print(f"Probability command executed in {time.time() - start:.2f} seconds")
 
     @app_commands.command(name="advanced_query", description="Query the database with custom scoring systems")
-    @app_commands.describe(req_score="The score required for a match", species="The species type of the Pokemon", allow_subseeds="Allow the usage of Subskill Seeds to reach the requirements", subskill_scores="The custom subskill score formatting (see /query_format)", nature_up_scores="The custom nature UP scores formatting (see /query_format)", nature_down_scores="The custom nature DOWN scores formatting (see /query_format) (DECREASE instead of increase)", ings="The ingredient combination you want to search for (Default: None)", gold_cap="The number of guaranteed gold subskills you want to cap at (Default: 3)", search_range="The range of subskills you want to search for (Default: Lv. 50)")
+    @app_commands.describe(req_score="The score required for a match", species="The species type of the Pokemon", allow_subseeds="Allow the usage of Subskill Seeds to reach the requirements", subskill_scores="", nature_up_scores="", nature_down_scores="")
     @app_commands.choices(
         species = [
             Choice(name="Standard (5-7 pip) (10/40/100)", value=0),
@@ -595,7 +641,11 @@ class ProbabilityCog(commands.Cog):
             Choice(name="Lv. 80", value=5)
         ]
     )
-    async def advancedquery(self, interaction: discord.Interaction, req_score: int, species: int, allow_subseeds: bool, subskill_scores: str = "", nature_up_scores: str = "", nature_down_scores: str = "", ings: int = -1, gold_cap: int = 3, search_range: int = 3):
+    async def advancedquery(self, interaction: discord.Interaction, req_score: int, species: int, allow_subseeds: bool, subskill_scores: str = "", nature_up_scores: str = "", nature_down_scores: str = "", ings: int = -1, search_range: int = 3):
+        if masterDB is None:
+            await interaction.response.send_message("The probability database is still building. Please try again in a few minutes.", ephemeral=True)
+            return
+
         if subskill_scores == "" and nature_up_scores == "" and nature_down_scores == "":
             await interaction.response.send_message("You must specify at least one score.", ephemeral=True)
         try:
@@ -706,7 +756,7 @@ class ProbabilityCog(commands.Cog):
     @app_commands.command(name="help_probability", description="Get help with the probability command")
     async def helpprobability(self, interaction: discord.Interaction):
         embed = discord.Embed(title="How to use `/probability`",
-              description="`*` = Required Parameter\n\nTo quickly remember Subskill IDs:\nBFS 0, HB 1,\nHSM 7, HSS 7 + 6\nIFM 8, IFS 8 + 6\nSTM 9, STS 9 + 6\n\n__**Examples**__\n`/probability required_subskills:0,1 species:Standard (5-7 pip) allow_subseed:False`\nReturns the odds of rolling a BFS+HB combination on a 5-7 pip Pokemon.\n`/probability required_subskills:8 species:16 pip allow_subseed:True optional_subskills:1,7 optional_amount:1 nature_down_exclude:0,1 ingredients:AAA (Mono) cumulative:20`\nReturns the odds of rolling a 16-Pip Pokemon with (subseed allowed):\n- Ingredient Finder M\n- **1 of** Helping Bonus and Helping Speed M\n- **Not** -SoH or -Ing\n- Mono Ingredients\nAnd calculates the cumulative probability finding **at least one** matching Pokemon in 20 catches.",
+              description="`*` = Required Parameter\n\nTo quickly remember Subskill IDs:\nBFS 0, HB 1,\nHSM 7, HSS 7 + 6\nIFM 8, IFS 8 + 6\nSTM 9, STS 9 + 6\n\n__**Examples**__\n`/probability required[...]",
               colour=0x00b0f4)
 
         embed.add_field(name="*Required Subskills (`required_subskills`)",
@@ -751,7 +801,7 @@ class ProbabilityCog(commands.Cog):
     async def mathdetails(self, interaction: discord.Interaction):
         embed = discord.Embed(
             title="Mathematical Details",
-            description="The bot uses a [Monte Carlo Simulation](https://en.wikipedia.org/wiki/Monte_Carlo_method) on the Pokemon Sleep Subskill selection process to acquire probability numbers, with a margin of error (MoE) of about 0.01% at 95% confidence level. Therefore, **the probability output of each command may be different despite having the exact same parameters.** Credits to Raenonx, @powderrrrrrrrrrrrrrrrrrrrrrrrrrr and @noko17 for the subskill chances, and Raenonx, @calpisrtori on Discord for ingredient combination chances.",
+            description="The bot uses a [Monte Carlo Simulation](https://en.wikipedia.org/wiki/Monte_Carlo_method) on the Pokemon Sleep Subskill selection process to acquire probability numbers, [...]",
             color=discord.Color.random()
         )
         embed.add_field(name="Total Samples", value=str(TOTAL_SAMPLES), inline=False)
@@ -763,5 +813,12 @@ class ProbabilityCog(commands.Cog):
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(ProbabilityCog(bot))
-    global masterDB
-    masterDB = generateMasterDB()
+    global masterDB_task
+
+    # build the DB in a background thread so the bot doesn't block on startup
+    async def _build():
+        global masterDB
+        masterDB = await asyncio.to_thread(generateMasterDB)
+        print("Master DB build complete")
+
+    masterDB_task = asyncio.create_task(_build())
