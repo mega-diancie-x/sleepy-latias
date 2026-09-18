@@ -76,6 +76,12 @@ The command also supports Cumulative Probability in a way identical to `/probabi
 
 ### Example
 ```
-/advanced_query req_score: 18 species: 0 allow_subseeds: true subskill_scores: 0110,0704,0905 nature_up_scores: 03,23 nature_down_scores: 02,22 search_range: 3
+/advanced_query req_score: 18 species: Standard (5-7 pip) (10/40/100) allow_subseeds: true subskill_scores: 0110,0704,0905 nature_up_scores: 03,23 nature_down_scores: 02,22 search_range: 3
 ```
-This command calculates a probability of a Pokemon scoring 18 points or higher (subseeds allowed) with HB being +10, HSM being +4, STM being +5, SoH+ and MSC+ being +2, and SoH- and MSC- being -2.
+This command calculates a probability of a Lv.50 Pokemon scoring 18 points or higher (subseeds allowed) with HB being +10, HSM being +4, STM being +5, SoH+ and MSC+ being +2, and SoH- and MSC- being -2.
+
+## Mathematical Details
+
+## Credits
+
+## Installation Guide
