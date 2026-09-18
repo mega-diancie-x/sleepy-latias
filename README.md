@@ -34,15 +34,48 @@ This command calculates the probability with the same conditions as Example 1, e
 The ingredient combo of a pokemon can be specified with the `ingredients` parameter.
 
 ### Optional Subskills
-You can specify optional subskills to be matched. Along with other conditions, a specified number or more of the optional subskills exists in the Search Range, that Pokemon satisfies the condition to be counted. Otherwise, the Pokemon counts as a fail.  
+You can specify optional subskills to be matched. Along with other conditions, if a specified number or more of the optional subskills exists in the Search Range, that Pokemon satisfies the condition to be counted. Otherwise, the Pokemon counts as a fail.  
 *Example 3*
 ```
-/probability required_subskills: 7,9 species: 2 allow_subseeds: true optional_subskills: 13,15 optional_amount: 1 nature_up: 0,2 nature_down_exclude: 0,2 search_range: 3
+/probability required_subskills: 7,9 species: 16 Pip (10/25/50) allow_subseeds: true optional_subskills: 13,15 optional_amount: 1 nature_up: 0,2 nature_down_exclude: 0,2 search_range: 3
 ```
 This command calculates the probability of getting HSM+STM combo (subseeds allowed) AND **at least one of** HSS or STS at or before Level 50, with a SoH+ or MSC+ nature and neither stats being dropped by nature.
 
 ### Cumulative Probability
-The bot allows the calculation of cumulative probability of a specified number of catches from a specified Friend Level (FL). The bot calciulates the probability of at least one Pokemon satisfying the conditions being in the captures.
+The bot allows the calculation of cumulative probability of a specified number of catches from a specified Friend Level (FL). The bot calculates the probability of at least one Pokemon satisfying the conditions being in the captures.
+
+#### Species
+Despite it being required, it does not influence calculations outside of Cumulative Probability. This affects the level each Befriending Badge is unlocked.
 
 #### Gold Cap
 You can limit the maximum number of Guaranteed Golds being toggled on. This won't take effect before FL40.
+
+### Complex Example
+```
+/probability required_subskills: 7,9 species: 16 Pip (10/25/50) allow_subseeds: true optional_subskills: 13,15 optional_amount: 1 nature_up: 0,2 nature_down_exclude: 0,2 cumulative: 20 gold_cap: 0 search_range: 3
+```
+This command  calculates the probability with the same conditions as Example 3, as well as the probability of this 16-pip Pokemon satisfying the conditions within 20 catches.
+
+## Advanced Usage (Scoring System)
+The `/advanced_query` command allows a more unrestricted search for Pokemon, using a scoring system instead of a required-optional system.
+
+### Usage
+The basic parameters include `req_score`, which specifies the score required for a Pokemon to satisfy the condition, and `species`, `allow_subseeds` and `search_range` which are the same as they are in `/probability`.
+
+#### Subskill Score
+The score for each subskill can be customized with the `subskill_scores` parameter. The parameter is comma-separated and each comma-separated modifier is four digits. The first two digits contain the ID of the subskill, while the last two contain the score, ranging from -99 to 99. The negative sign may be used in scores, but the score still needs to be two digits excluding the sign. All unspecified subskills default to a score of zero.  
+For example, `0007` grants BFS a score of 7, while `08-01` grants IFM a score of -1.
+
+#### Nature Score
+Nature Score works similarly to subskill score with the `nature_up_scores` and `nature_down_scores` parameters, except the modifier is 3 digits. The first digit contains the ID of the nature while the last two contain the score.
+
+**IMPORTANT:** The `nature_down_scores` parameter **subtracts** the score amount instead of adding it, so a `0-01` modifier actually grants a +1 score to SoH-.
+
+### Cumulative Probability
+The command also supports Cumulative Probability in a way identical to `/probability.`
+
+### Example
+```
+/advanced_query req_score: 18 species: 0 allow_subseeds: true subskill_scores: 0110,0704,0905 nature_up_scores: 03,23 nature_down_scores: 02,22 search_range: 3
+```
+This command calculates a probability of a Pokemon scoring 18 points or higher (subseeds allowed) with HB being +10, HSM being +4, STM being +5, SoH+ and MSC+ being +2, and SoH- and MSC- being -2.
