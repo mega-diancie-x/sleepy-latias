@@ -158,9 +158,7 @@ def _queryDatabase(db, reqSubskills, optSubskills=None, optAmount=0, nature1=Non
 
     for bracket in range(4):
         for i in prange(SAMPLES_PER_BRACKET):
-            # 1. Quick Filters (Natures and Ingredients)
             if nature1 is not None:
-                # check membership manually
                 found = False
                 for nn in range(len(nature1)):
                     if db[bracket, i, 5] == nature1[nn]:
@@ -185,7 +183,6 @@ def _queryDatabase(db, reqSubskills, optSubskills=None, optAmount=0, nature1=Non
                 if found:
                     continue
             if ings != -1:
-                # Handle special case with AAX (110)
                 if ings % 10 == 0:
                     if db[bracket, i, 7] // 10 != ings // 10:
                         continue
@@ -193,7 +190,6 @@ def _queryDatabase(db, reqSubskills, optSubskills=None, optAmount=0, nature1=Non
                     if db[bracket, i, 7] != ings:
                         continue
 
-            # 2. Required Subskills Check
             req_found = 0
             used_slots = np.zeros(max_idx, dtype=np.bool_)
 
@@ -201,7 +197,6 @@ def _queryDatabase(db, reqSubskills, optSubskills=None, optAmount=0, nature1=Non
                 req_target = reqSubskills[r_idx]
                 matched = False
 
-                # Direct Match
                 for s_idx in range(max_idx):
                     if (not used_slots[s_idx]) and db[bracket, i, s_idx] == req_target:
                         used_slots[s_idx] = True
@@ -211,9 +206,7 @@ def _queryDatabase(db, reqSubskills, optSubskills=None, optAmount=0, nature1=Non
                 if matched:
                     continue
 
-                # Subseed Match
                 if allowSeeds:
-                    # search to_subseed_values manually
                     k_idx = -1
                     for kk in range(len(to_subseed_values)):
                         if to_subseed_values[kk] == req_target:
@@ -221,7 +214,6 @@ def _queryDatabase(db, reqSubskills, optSubskills=None, optAmount=0, nature1=Non
                             break
                     if k_idx != -1:
                         base_skill = to_subseed_keys[k_idx]
-                        # check if req_target present in first five
                         present = False
                         for p in range(5):
                             if db[bracket, i, p] == req_target:
@@ -236,7 +228,6 @@ def _queryDatabase(db, reqSubskills, optSubskills=None, optAmount=0, nature1=Non
                                     break
 
                     if not matched:
-                        # special double-subseed case for 11 from 16
                         present11 = False
                         for p in range(5):
                             if db[bracket, i, p] == 11:
@@ -253,14 +244,12 @@ def _queryDatabase(db, reqSubskills, optSubskills=None, optAmount=0, nature1=Non
             if req_found < num_req:
                 continue
 
-            # 3. Optional Subskills Check
             if optSubskills is not None:
                 opt_found = 0
                 for o_idx in range(len(optSubskills)):
                     opt_target = optSubskills[o_idx]
                     matched = False
 
-                    # Direct Match
                     for s_idx in range(max_idx):
                         if (not used_slots[s_idx]) and db[bracket, i, s_idx] == opt_target:
                             used_slots[s_idx] = True
@@ -270,7 +259,6 @@ def _queryDatabase(db, reqSubskills, optSubskills=None, optAmount=0, nature1=Non
                     if matched:
                         continue
 
-                    # Subseed Match
                     if allowSeeds:
                         k_idx = -1
                         for kk in range(len(to_subseed_values)):
@@ -309,14 +297,12 @@ def _queryDatabase(db, reqSubskills, optSubskills=None, optAmount=0, nature1=Non
                 if opt_found < optAmount:
                     continue
 
-            # Passed all checks: increment hit counter for this bracket
             atomic.add(hits, bracket, 1)
 
     return hits
 
 
 def queryDatabase(db, reqSubskills, optSubskills = None, optAmount = 0, nature1 = -1, nature2 = -1, natureNot = -1, ings = -1, searchRange: int = 3, allowSeeds = False):
-    # Helper function for time measurement
     start = time.time()
     hits = _queryDatabase(db, reqSubskills, optSubskills, optAmount, nature1, nature2, natureNot, ings, searchRange, allowSeeds)
     print(f"Query took {round(time.time() - start, 2)} seconds")
@@ -330,7 +316,6 @@ def _score_query_db(db, subskill_scores, nature_up_scores, nature_down_scores, r
 
     for bracket in range(4):
         for i in prange(SAMPLES_PER_BRACKET):
-            # 1. Quick Filters (Ingredients)
             if ings != -1:
                 if ings % 10 == 0:
                     if db[bracket, i, 7] // 10 != ings // 10:
@@ -342,12 +327,9 @@ def _score_query_db(db, subskill_scores, nature_up_scores, nature_down_scores, r
             score = 0
             used_slots = np.zeros(max_idx, dtype=np.bool_)
 
-            # 2. Subskill Score
             for s_idx in range(max_idx):
-                # Subseed matching
                 val = db[bracket, i, s_idx]
                 if allowSeeds:
-                    # Special Case with Inventory Up L (11) and Inventory Up S (16)
                     present11 = False
                     for p in range(5):
                         if db[bracket, i, p] == 11:
@@ -359,7 +341,6 @@ def _score_query_db(db, subskill_scores, nature_up_scores, nature_down_scores, r
                             score += subskill_scores[11]
                             continue
 
-                    # check if val is a base skill that can subseed
                     k_idx = -1
                     for kk in range(len(to_subseed_keys)):
                         if to_subseed_keys[kk] == val:
@@ -367,7 +348,6 @@ def _score_query_db(db, subskill_scores, nature_up_scores, nature_down_scores, r
                             break
                     if k_idx != -1 and (not used_slots[s_idx]):
                         after_skill = to_subseed_values[k_idx]
-                        # check presence of after_skill in first five
                         present_after = False
                         for p in range(5):
                             if db[bracket, i, p] == after_skill:
@@ -378,16 +358,12 @@ def _score_query_db(db, subskill_scores, nature_up_scores, nature_down_scores, r
                             score += subskill_scores[after_skill]
                             continue
 
-                # Direct match if slot not used
                 if not used_slots[s_idx]:
                     used_slots[s_idx] = True
                     score += subskill_scores[val]
 
-            # 3. Nature Score
-            # add/subtract based on nature arrays
             n5 = db[bracket, i, 5]
             n6 = db[bracket, i, 6]
-            # nature_up_scores and nature_down_scores are dense arrays
             score += nature_up_scores[n5]
             score -= nature_down_scores[n6]
 
@@ -399,7 +375,6 @@ def _score_query_db(db, subskill_scores, nature_up_scores, nature_down_scores, r
 
 
 def score_query_db(db, subskill_scores, nature_up_scores, nature_down_scores, req_score, ings = -1, searchRange: int = 3, allowSeeds=False):
-    # Helper function for time measurement
     start = time.time()
     subskill_scores = np.array([subskill_scores.get(i, 0) for i in range(17)], dtype=np.int16)
     nature_up_scores = np.array([nature_up_scores.get(i, 0) for i in range(5)], dtype=np.int16)
@@ -407,7 +382,8 @@ def score_query_db(db, subskill_scores, nature_up_scores, nature_down_scores, re
     results = _score_query_db(db, subskill_scores, nature_up_scores, nature_down_scores, req_score, ings, searchRange, allowSeeds)
     print(f"Query took {round(time.time() - start, 2)} seconds")
     return results
-    
+
+
 def cumulative_probability(odds1: float, odds2: float, odds3: float, odds4: float, goldCap: int, species: int, trials: int) -> float:
     """
     Calculates the probability of getting AT LEAST ONE success across N trials, accounting for changing base odds when a new befriending medal is unlocked.
@@ -419,36 +395,31 @@ def cumulative_probability(odds1: float, odds2: float, odds3: float, odds4: floa
     silverBadge = SPECIES_BADGE_LIST[species][1]
     goldBadge = SPECIES_BADGE_LIST[species][2]
 
-    # Enforce caps by shifting requirements outward if disabled
     if goldCap == 1:
         silverBadge = 999999
         goldBadge = 999999
     elif goldCap == 2:
         goldBadge = 999999
 
-    # Calculate the fail rate for each individual bracket (1 - success_rate)
     fail1 = 1.0 - odds1
     fail2 = 1.0 - odds2
     fail3 = 1.0 - odds3
     fail4 = 1.0 - odds4
 
-    # Determine how many trials land in each befriending medal bracket
-    t1 = min(8, trials) # First 8 catches (0 guaranteed)
-    t2 = max(0, min(silverBadge - 9, trials - 9)) # Level 10-39 or cap (1 guaranteed)
-    t3 = max(0, min(goldBadge - silverBadge, trials - silverBadge + 1)) # Level 40-99 or cap (2 guaranteed)
+    t1 = min(8, trials)
+    t2 = max(0, min(silverBadge - 9, trials - 9))
+    t3 = max(0, min(goldBadge - silverBadge, trials - silverBadge + 1))
     if goldCap != 0:
-        t4 = max(0, trials - goldBadge + 1) # Level 100+ (3 guaranteed)
+        t4 = max(0, trials - goldBadge + 1)
     else:
         t3 = max(0, trials - silverBadge + 1)
         t4 = 0
 
-    # Total probability of failing EVERY single catch across all brackets
     if goldCap != 0:
         total_fail_chance = (fail1 ** t1) * (fail2 ** t2) * (fail3 ** t3) * (fail4 ** t4)
     else:
         total_fail_chance = (fail1 ** t1) * (fail2 ** t2) * (fail1 ** t3)
 
-    # At least one success = 1 - total failure
     return 1.0 - total_fail_chance
 
 
@@ -484,7 +455,6 @@ def generateEmbed(hits, reqSubskills, optSubskills = None, optAmount = 0, nature
 
     if cumulative != -1 and cumulative > 0:
         cumulativeStr = ""
-        # report every 10 catches and the final value
         max_step = cumulative // 10
         for step in range(1, max_step + 1):
             catch = step * 10
@@ -495,14 +465,28 @@ def generateEmbed(hits, reqSubskills, optSubskills = None, optAmount = 0, nature
 
     return embed
 
+
 class ProbabilityCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
     @app_commands.command(name="probability", description="Calculate the probability of a Pokemon having certain subskills")
-    @app_commands.describe(allow_subseeds="Allow the usage of Subskill Seeds to reach the requirements", required_subskills="The subskill IDs you want to search for (Must match all) (Separate by comma[...]")
+    @app_commands.describe(
+        required_subskills="Comma-separated subskill IDs that must all be present.",
+        species="Species type to use for badge thresholds.",
+        allow_subseeds="Whether subseed conversion is allowed.",
+        optional_subskills="Optional subskill IDs that may also be present.",
+        optional_amount="How many optional subskills are required.",
+        nature_up="Nature IDs that must be boosted.",
+        nature_down="Nature IDs that must be diminished.",
+        nature_down_exclude="Nature IDs to exclude from being diminished.",
+        ingredients="Ingredient combination requirement.",
+        cumulative="Calculate cumulative odds up to this catch number.",
+        gold_cap="Gold subskill max to use for cumulative calculation.",
+        search_range="Number of unlocked subskill slots to search.",
+    )
     @app_commands.choices(
-        ingredients = [
+        ingredients=[
             Choice(name="AAX (Lv60 any)", value=110),
             Choice(name="AAA (Mono)", value=111),
             Choice(name="AAB", value=112),
@@ -512,19 +496,19 @@ class ProbabilityCog(commands.Cog):
             Choice(name="ABC", value=123),
             Choice(name="None", value=-1)
         ],
-        gold_cap = [
+        gold_cap=[
             Choice(name="0", value=0),
             Choice(name="1 (Bronze)", value=1),
             Choice(name="2 (Silver)", value=2),
             Choice(name="3 (Gold)", value=3)
         ],
-        species = [
+        species=[
             Choice(name="Standard (5-7 pip) (10/40/100)", value=0),
             Choice(name="2nd Evos (10/30/60)", value=1),
             Choice(name="16 Pip (10/25/50)", value=2),
             Choice(name="20-30 Pip (10/20/40)", value=3)
         ],
-        search_range = [
+        search_range=[
             Choice(name="Lv. 10", value=1),
             Choice(name="Lv. 25", value=2),
             Choice(name="Lv. 50", value=3),
@@ -532,8 +516,22 @@ class ProbabilityCog(commands.Cog):
             Choice(name="Lv. 80", value=5)
         ]
     )
-    async def probability(self, interaction: discord.Interaction, required_subskills: str, species: int, allow_subseeds: bool, optional_subskills: str = None, optional_amount: int = 1, nature_up=None, nature_down=None, nature_down_exclude=None, ingredients: int = -1, cumulative: int = -1, gold_cap: int = 3, search_range: int = 3):
-        # Ensure DB is ready before doing expensive operations
+    async def probability(
+        self,
+        interaction: discord.Interaction,
+        required_subskills: str,
+        species: int,
+        allow_subseeds: bool,
+        optional_subskills: str = None,
+        optional_amount: int = 1,
+        nature_up: str = None,
+        nature_down: str = None,
+        nature_down_exclude: str = None,
+        ingredients: int = -1,
+        cumulative: int = -1,
+        gold_cap: int = 3,
+        search_range: int = 3,
+    ):
         if masterDB is None:
             await interaction.response.send_message("The probability database is still building. Please try again in a few minutes.", ephemeral=True)
             return
@@ -545,7 +543,6 @@ class ProbabilityCog(commands.Cog):
             await interaction.response.send_message("You can only calculate the cumulative probability for up to 500,000 catches.", ephemeral=True)
             return
         try:
-            # Remove spaces from inputs
             required_subskills = required_subskills.replace(" ", "")
             optional_subskills = optional_subskills.replace(" ", "") if optional_subskills is not None else None
             nature_up = nature_up.replace(" ", "") if nature_up is not None else None
@@ -553,12 +550,13 @@ class ProbabilityCog(commands.Cog):
             nature_down_exclude = nature_down_exclude.replace(" ", "") if nature_down_exclude is not None else None
         except AttributeError:
             pass
-        # Handle invalid inputs
+
         for i in required_subskills.split(","):
             try:
                 int(i)
             except ValueError:
                 await interaction.response.send_message(f"Invalid subskill ID: {i}", ephemeral=True)
+                return
             if int(i) not in ID_TO_SUBS:
                 await interaction.response.send_message(f"Invalid subskill ID: {i}", ephemeral=True)
                 return
@@ -567,6 +565,7 @@ class ProbabilityCog(commands.Cog):
                 int(i)
             except ValueError:
                 await interaction.response.send_message(f"Invalid subskill ID: {i}", ephemeral=True)
+                return
             if int(i) not in ID_TO_SUBS:
                 await interaction.response.send_message(f"Invalid subskill ID: {i}", ephemeral=True)
                 return
@@ -575,6 +574,7 @@ class ProbabilityCog(commands.Cog):
                 int(i)
             except ValueError:
                 await interaction.response.send_message(f"Invalid nature ID: {i}", ephemeral=True)
+                return
             if int(i) not in ID_TO_NATURES:
                 await interaction.response.send_message(f"Invalid nature ID: {i}", ephemeral=True)
                 return
@@ -583,6 +583,7 @@ class ProbabilityCog(commands.Cog):
                 int(i)
             except ValueError:
                 await interaction.response.send_message(f"Invalid nature ID: {i}", ephemeral=True)
+                return
             if int(i) not in ID_TO_NATURES:
                 await interaction.response.send_message(f"Invalid nature ID: {i}", ephemeral=True)
                 return
@@ -591,23 +592,23 @@ class ProbabilityCog(commands.Cog):
                 int(i)
             except ValueError:
                 await interaction.response.send_message(f"Invalid nature ID: {i}", ephemeral=True)
+                return
             if int(i) not in ID_TO_NATURES:
                 await interaction.response.send_message(f"Invalid nature ID: {i}", ephemeral=True)
                 return
-        
+
         start = time.time()
         await interaction.response.defer()
-        # Split comma-separated inputs into NumPy Arrays
         reqSubskills = np.array([int(i) for i in required_subskills.split(",")], dtype=np.int8)
         if optional_subskills is not None:
             optSubskills = np.array([int(i) for i in optional_subskills.split(",")], dtype=np.int8)
         else:
             optSubskills = None
-        # Ignore errors here
+
         nature_up = np.array([int(i) for i in nature_up.split(",")], dtype=np.int8) if nature_up is not None else None
         nature_down = np.array([int(i) for i in nature_down.split(",")], dtype=np.int8) if nature_down is not None else None
         nature_down_exclude = np.array([int(i) for i in nature_down_exclude.split(",")], dtype=np.int8) if nature_down_exclude is not None else None
-        # Query the database
+
         results = queryDatabase(masterDB, reqSubskills, optSubskills, optional_amount, nature_up, nature_down, nature_down_exclude, ingredients, search_range, allow_subseeds)
         embed = generateEmbed(results, reqSubskills, optSubskills, optional_amount, nature_up, nature_down, nature_down_exclude, ingredients, cumulative, gold_cap, species, search_range)
         embed.set_footer(text=f"Search Range: {search_range}, Total Samples: {TOTAL_SAMPLES}, Generated in {time.time() - start:.2f} seconds")
@@ -615,15 +616,24 @@ class ProbabilityCog(commands.Cog):
         print(f"Probability command executed in {time.time() - start:.2f} seconds")
 
     @app_commands.command(name="advanced_query", description="Query the database with custom scoring systems")
-    @app_commands.describe(req_score="The score required for a match", species="The species type of the Pokemon", allow_subseeds="Allow the usage of Subskill Seeds to reach the requirements", subskill_scores="", nature_up_scores="", nature_down_scores="")
+    @app_commands.describe(
+        req_score="The minimum score needed for a match.",
+        species="Species type to use for badge thresholds.",
+        allow_subseeds="Whether subseed conversion is allowed.",
+        subskill_scores="Comma-separated subskill score strings like 0010 for BFS with score 10.",
+        nature_up_scores="Comma-separated nature-up score strings like 010 for Speed of Help +10.",
+        nature_down_scores="Comma-separated nature-down score strings like 010 for a -10 penalty.",
+        ings="Ingredient combination filter.",
+        search_range="Number of unlocked subskill slots to search.",
+    )
     @app_commands.choices(
-        species = [
+        species=[
             Choice(name="Standard (5-7 pip) (10/40/100)", value=0),
             Choice(name="2nd Evos (10/30/60)", value=1),
             Choice(name="16 Pip (10/25/50)", value=2),
             Choice(name="20-30 Pip (10/20/40)", value=3)
         ],
-        ings = [
+        ings=[
             Choice(name="AAX (Lv60 any)", value=110),
             Choice(name="AAA (Mono)", value=111),
             Choice(name="AAB", value=112),
@@ -633,7 +643,7 @@ class ProbabilityCog(commands.Cog):
             Choice(name="ABC", value=123),
             Choice(name="None", value=-1)
         ],
-        search_range = [
+        search_range=[
             Choice(name="Lv. 10", value=1),
             Choice(name="Lv. 25", value=2),
             Choice(name="Lv. 50", value=3),
@@ -641,27 +651,44 @@ class ProbabilityCog(commands.Cog):
             Choice(name="Lv. 80", value=5)
         ]
     )
-    async def advancedquery(self, interaction: discord.Interaction, req_score: int, species: int, allow_subseeds: bool, subskill_scores: str = "", nature_up_scores: str = "", nature_down_scores: str = "", ings: int = -1, search_range: int = 3):
+    async def advancedquery(
+        self,
+        interaction: discord.Interaction,
+        req_score: int,
+        species: int,
+        allow_subseeds: bool,
+        subskill_scores: str = "",
+        nature_up_scores: str = "",
+        nature_down_scores: str = "",
+        ings: int = -1,
+        search_range: int = 3,
+    ):
         if masterDB is None:
             await interaction.response.send_message("The probability database is still building. Please try again in a few minutes.", ephemeral=True)
             return
 
         if subskill_scores == "" and nature_up_scores == "" and nature_down_scores == "":
             await interaction.response.send_message("You must specify at least one score.", ephemeral=True)
+            return
+
         try:
             subskill_scores = subskill_scores.replace(" ", "")
             nature_up_scores = nature_up_scores.replace(" ", "")
             nature_down_scores = nature_down_scores.replace(" ", "")
         except AttributeError:
             pass
+
         try:
-            subskill_scores = subskill_scores.split(",")
-            nature_up_scores = nature_up_scores.split(",")
-            nature_down_scores = nature_down_scores.split(",")
+            subskill_scores = subskill_scores.split(",") if subskill_scores else [""]
+            nature_up_scores = nature_up_scores.split(",") if nature_up_scores else [""]
+            nature_down_scores = nature_down_scores.split(",") if nature_down_scores else [""]
             subScores = {}
             nupScores = {}
             ndownScores = {}
+
             for i in subskill_scores:
+                if i == "":
+                    continue
                 if len(i) < 4 or len(i) > 5:
                     await interaction.response.send_message(f"Invalid subskill score formatting: {i}", ephemeral=True)
                     return
@@ -671,7 +698,10 @@ class ProbabilityCog(commands.Cog):
                     await interaction.response.send_message(f"Invalid subskill ID: {i[:2]}", ephemeral=True)
                     return
                 subScores[id] = score
+
             for i in nature_up_scores:
+                if i == "":
+                    continue
                 if len(i) < 2 or len(i) > 3:
                     await interaction.response.send_message(f"Invalid nature up score formatting: {i}", ephemeral=True)
                     return
@@ -681,7 +711,10 @@ class ProbabilityCog(commands.Cog):
                     await interaction.response.send_message(f"Invalid nature ID: {i[0]}", ephemeral=True)
                     return
                 nupScores[id] = score
+
             for i in nature_down_scores:
+                if i == "":
+                    continue
                 if len(i) < 2 or len(i) > 3:
                     await interaction.response.send_message(f"Invalid nature down score formatting: {i}", ephemeral=True)
                     return
@@ -691,7 +724,7 @@ class ProbabilityCog(commands.Cog):
                     await interaction.response.send_message(f"Invalid nature ID: {i[0]}", ephemeral=True)
                     return
                 ndownScores[id] = score
-        except:
+        except Exception:
             await interaction.response.send_message("Invalid score formatting.", ephemeral=True)
             return
 
@@ -755,53 +788,31 @@ class ProbabilityCog(commands.Cog):
 
     @app_commands.command(name="help_probability", description="Get help with the probability command")
     async def helpprobability(self, interaction: discord.Interaction):
-        embed = discord.Embed(title="How to use `/probability`",
-              description="`*` = Required Parameter\n\nTo quickly remember Subskill IDs:\nBFS 0, HB 1,\nHSM 7, HSS 7 + 6\nIFM 8, IFS 8 + 6\nSTM 9, STS 9 + 6\n\n__**Examples**__\n`/probability required[...]",
-              colour=0x00b0f4)
+        embed = discord.Embed(
+            title="How to use `/probability`",
+            description="`*` = Required Parameter\n\nTo quickly remember Subskill IDs:\nBFS 0, HB 1,\nHSM 7, HSS 7 + 6\nIFM 8, IFS 8 + 6\nSTM 9, STS 9 + 6\n\n__**Examples**__\n`/probability required_subskills:0,1 species:0 allow_subseeds:true`",
+            color=0x00b0f4,
+        )
 
-        embed.add_field(name="*Required Subskills (`required_subskills`)",
-        value="Enter comma-separate text of valid Subskill IDs (use `/subskill_ids` for IDs).",
-        inline=False)
-        embed.add_field(name="*Species Type (`species`)",
-        value="The species type of the Pokemon based on its required friendship to catch. Should be selectable with values.",
-        inline=False)
-        embed.add_field(name="*Allow Subseeds (`allow_subseeds`)",
-        value="Whether to allow the use of Sub Skill Seeds to reach the requirements or not.",
-        inline=False)
-        embed.add_field(name="Optional Subskills (`optional_subskills`)",
-        value="Enter comma-separate text of valid Subskill IDs (use `/subskill_ids` for IDs). (Default: None)",
-        inline=False)
-        embed.add_field(name="Optional Subskill Count (`optional_amount`)",
-        value="The number of optional subskills required. (Default: 1)",
-        inline=False)
-        embed.add_field(name="Nature Boost (`nature_up`)",
-        value="The Nature ID(s) (comma-separated if multiple accepted) (use `/nature_ids` for IDs) required to be boosted by nature. (Default: Any)",
-        inline=False)
-        embed.add_field(name="Nature Diminish (`nature_down`)",
-        value="The Nature ID(s) (comma-separated if multiple accepted) (use `/nature_ids` for IDs) required to be diminished by nature. (Default: Any)",
-        inline=False)
-        embed.add_field(name="Nature Diminish To Avoid (`nature_down_exclude`)",
-        value="The Nature ID(s) (comma-separated if multiple needed) (use `/nature_ids` for IDs) to avoid being diminished by nature. (Default: All Accept)",
-        inline=False)
-        embed.add_field(name="Ingredient Combo (`ingredients`)",
-        value="The Ingredient Combinations required. Should be selectable with values. (Default: None)",
-        inline=False)
-        embed.add_field(name="Cumulative Catches (`cumulative`)",
-        value="The number of catches to calculate cumulative probabiltiy up to. Enter a number from 0 to 10000. (Default: None)",
-        inline=False)
-        embed.add_field(name="Gold Subskill Max (`gold_cap`)",
-        value="The maximum number of guaranteed gold subskills to apply when calculating cumulative probability. Enter a number from 0 to 3. (Ignored before Silver Badge) (Default: 3)",
-        inline=False)
-        embed.add_field(name="Subskill Search Range (`search_range`)",
-        value="The subskill slots to search up to. Should be selectable with values. (Default: Lv. 50)",
-        inline=False)
+        embed.add_field(name="*Required Subskills (`required_subskills`)", value="Enter comma-separated text of valid Subskill IDs (use `/subskill_ids` for IDs).", inline=False)
+        embed.add_field(name="*Species Type (`species`)", value="The species type of the Pokemon based on its required friendship to catch. Should be selectable with values.", inline=False)
+        embed.add_field(name="*Allow Subseeds (`allow_subseeds`)", value="Whether to allow the use of Sub Skill Seeds to reach the requirements or not.", inline=False)
+        embed.add_field(name="Optional Subskills (`optional_subskills`)", value="Enter comma-separated text of valid Subskill IDs (use `/subskill_ids` for IDs). (Default: None)", inline=False)
+        embed.add_field(name="Optional Subskill Count (`optional_amount`)", value="The number of optional subskills required. (Default: 1)", inline=False)
+        embed.add_field(name="Nature Boost (`nature_up`)", value="The Nature ID(s) (comma-separated if multiple accepted) (use `/nature_ids` for IDs) required to be boosted by nature. (Default: Any)", inline=False)
+        embed.add_field(name="Nature Diminish (`nature_down`)", value="The Nature ID(s) (comma-separated if multiple accepted) (use `/nature_ids` for IDs) required to be diminished by nature. (Default: Any)", inline=False)
+        embed.add_field(name="Nature Diminish To Avoid (`nature_down_exclude`)", value="The Nature ID(s) (comma-separated if multiple needed) (use `/nature_ids` for IDs) to avoid being diminished by nature. (Default: All Accept)", inline=False)
+        embed.add_field(name="Ingredient Combo (`ingredients`)", value="The Ingredient Combinations required. Should be selectable with values. (Default: None)", inline=False)
+        embed.add_field(name="Cumulative Catches (`cumulative`)", value="The number of catches to calculate cumulative probability up to. Enter a number from 0 to 10000. (Default: None)", inline=False)
+        embed.add_field(name="Gold Subskill Max (`gold_cap`)", value="The maximum number of guaranteed gold subskills to apply when calculating cumulative probability. Enter a number from 0 to 3. (Ignored before Silver Badge) (Default: 3)", inline=False)
+        embed.add_field(name="Subskill Search Range (`search_range`)", value="The subskill slots to search up to. Should be selectable with values. (Default: Lv. 50)", inline=False)
         await interaction.response.send_message(embed=embed)
 
     @app_commands.command(name="math_details", description="Get the math details of the probability calculation")
     async def mathdetails(self, interaction: discord.Interaction):
         embed = discord.Embed(
             title="Mathematical Details",
-            description="The bot uses a [Monte Carlo Simulation](https://en.wikipedia.org/wiki/Monte_Carlo_method) on the Pokemon Sleep Subskill selection process to acquire probability numbers, [...]",
+            description="The bot uses a Monte Carlo Simulation on the Pokemon Sleep Subskill selection process to acquire probability numbers.",
             color=discord.Color.random()
         )
         embed.add_field(name="Total Samples", value=str(TOTAL_SAMPLES), inline=False)
@@ -811,11 +822,11 @@ class ProbabilityCog(commands.Cog):
         embed.add_field(name="White Probability", value=str(1 - GOLD_PROB - BLUE_PROB), inline=False)
         await interaction.response.send_message(embed=embed)
 
+
 async def setup(bot: commands.Bot):
     await bot.add_cog(ProbabilityCog(bot))
     global masterDB_task
 
-    # build the DB in a background thread so the bot doesn't block on startup
     async def _build():
         global masterDB
         masterDB = await asyncio.to_thread(generateMasterDB)
