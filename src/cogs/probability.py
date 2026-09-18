@@ -1,6 +1,7 @@
 from random import random, randint, choice, choices
 import numpy as np
-from numba import njit, prange, atomic
+from numba import njit, prange
+from numba.cuda import atomic
 import time
 import asyncio
 
@@ -297,7 +298,7 @@ def _queryDatabase(db, reqSubskills, optSubskills=None, optAmount=0, nature1=Non
                 if opt_found < optAmount:
                     continue
 
-            atomic.add(hits, bracket, 1)
+            hits[bracket] += 1
 
     return hits
 
@@ -367,9 +368,9 @@ def _score_query_db(db, subskill_scores, nature_up_scores, nature_down_scores, r
             score += nature_up_scores[n5]
             score -= nature_down_scores[n6]
 
-            atomic.add(scores, bracket, score)
+            scores[bracket] += score
             if score >= req_score:
-                atomic.add(hits, bracket, 1)
+                hits[bracket] += 1
 
     return [scores, hits]
 
