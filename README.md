@@ -7,9 +7,9 @@ The `/probability` command accepts **twelve** different parameters in total, wit
 Before proceeding, you should memorize the subskill and nature IDs using `/subskill_ids` and `/nature_ids`.  
 To quickly remember Subskill IDs:  
 BFS 0, HB 1,  
-HSM 7, HSS 7 + 6  
-IFM 8, IFS 8 + 6  
-STM 9, STS 9 + 6  
+HSM 7, HSS 13  
+IFM 8, IFS 14 
+STM 9, STS 15 
 
 ### Basic Usage
 The most basic setup for the command is providing only the three required parameters, with an example in the following:  
