@@ -44,6 +44,8 @@ This command calculates the probability of getting HSM+STM combo (subseeds allow
 ### Cumulative Probability
 The bot allows the calculation of cumulative probability of a specified number of catches from a specified Friend Level (FL). The bot calculates the probability of at least one Pokemon satisfying the conditions being in the captures.
 
+**IMPORTANT:** The `cumulative` parameter sets the **number of catches**, NOT the final FL.
+
 #### Species
 Despite it being required, it does not influence calculations outside of Cumulative Probability. This affects the level each Befriending Badge is unlocked.
 

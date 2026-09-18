@@ -20,6 +20,17 @@ class MiscCog(commands.Cog):
         await interaction.response.send_message("Sent!", ephemeral=True)
         await interaction.channel.send(message)
 
+    @app_commands.command(name="uptime", description="Get the bot's uptime")
+    async def uptime(self, interaction: discord.Interaction):   
+        uptime = time.time() - self.bot.start_time
+        hours, remainder = divmod(int(uptime), 3600)
+        minutes, seconds = divmod(remainder, 60)
+        await interaction.response.send_message(f"Uptime: {hours}h {minutes}m {seconds}s")
+
+    @app_commands.command(name="help", description="Get a usage guide for the bot")
+    async def help(self, interaction: discord.Interaction):
+        await interaction.response.send_message("https://github.com/mega-diancie-x/sleepy-latias/blob/main/README.md")
+                                                
     @app_commands.command(name="credits", description="Credits for the bot")
     async def credits(self, interaction: discord.Interaction):
         embed = discord.Embed(title="Credits",

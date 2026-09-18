@@ -385,7 +385,7 @@ def score_query_db(db, subskill_scores, nature_up_scores, nature_down_scores, re
     return results
 
 
-def cumulative_probability(odds1: float, odds2: float, odds3: float, odds4: float, goldCap: int, species: int, trials: int) -> float:
+def cumulative_probability(odds1: float, odds2: float, odds3: float, odds4: float, goldCap: int, species: int, trials: int, fl: int = 0) -> float:
     """
     Calculates the probability of getting AT LEAST ONE success across N trials, accounting for changing base odds when a new befriending medal is unlocked.
     """
@@ -393,8 +393,8 @@ def cumulative_probability(odds1: float, odds2: float, odds3: float, odds4: floa
         return 0.0
 
     bronzeBadge = SPECIES_BADGE_LIST[species][0]
-    silverBadge = SPECIES_BADGE_LIST[species][1]
-    goldBadge = SPECIES_BADGE_LIST[species][2]
+    silverBadge = SPECIES_BADGE_LIST[species][1] - 1
+    goldBadge = SPECIES_BADGE_LIST[species][2] - 1
 
     if goldCap == 1:
         silverBadge = 999999
@@ -407,13 +407,13 @@ def cumulative_probability(odds1: float, odds2: float, odds3: float, odds4: floa
     fail3 = 1.0 - odds3
     fail4 = 1.0 - odds4
 
-    t1 = min(8, trials)
-    t2 = max(0, min(silverBadge - 9, trials - 9))
-    t3 = max(0, min(goldBadge - silverBadge, trials - silverBadge + 1))
+    t1 = max(min(8, trials) - fl, 0)
+    t2 = max(0, min(silverBadge - 9, trials - 9 - fl))
+    t3 = max(0, min(goldBadge - silverBadge, trials - silverBadge + 1 - fl))
     if goldCap != 0:
-        t4 = max(0, trials - goldBadge + 1)
+        t4 = max(0, trials - goldBadge + 1 - fl)
     else:
-        t3 = max(0, trials - silverBadge + 1)
+        t3 = max(0, trials - silverBadge + 1 - fl)
         t4 = 0
 
     if goldCap != 0:
@@ -424,7 +424,7 @@ def cumulative_probability(odds1: float, odds2: float, odds3: float, odds4: floa
     return 1.0 - total_fail_chance
 
 
-def generateEmbed(hits, reqSubskills, optSubskills = None, optAmount = 0, nature1 = -1, nature2 = -1, natureNot = -1, ings = -1, cumulative = -1, goldCap = 3, species = 0, searchRange: int = 3):
+def generateEmbed(hits, reqSubskills, optSubskills = None, optAmount = 0, nature1 = -1, nature2 = -1, natureNot = -1, ings = -1, cumulative = -1, goldCap = 3, species = 0, searchRange: int = 3, fl: int = 0):
     embed = discord.Embed(
         title="Probability Results",
         description="Notice: The bot is in development, and probability values may not be accurate.",
@@ -459,9 +459,9 @@ def generateEmbed(hits, reqSubskills, optSubskills = None, optAmount = 0, nature
         max_step = cumulative // 10
         for step in range(1, max_step + 1):
             catch = step * 10
-            cumulativeStr += f"Odds at Catch #{catch}: {cumulative_probability(hits[0] / SAMPLES_PER_BRACKET, hits[1] / SAMPLES_PER_BRACKET, hits[2] / SAMPLES_PER_BRACKET, hits[3] / SAMPLES_PER_BRACKET, goldCap, species, catch):.6f}\n"
+            cumulativeStr += f"Odds at Catch #{catch + fl}: {cumulative_probability(hits[0] / SAMPLES_PER_BRACKET, hits[1] / SAMPLES_PER_BRACKET, hits[2] / SAMPLES_PER_BRACKET, hits[3] / SAMPLES_PER_BRACKET, goldCap, species, catch, fl) * 100 :.6f}%\n"
         if cumulative % 10 != 0:
-            cumulativeStr += f"Odds at Catch #{cumulative}: {cumulative_probability(hits[0] / SAMPLES_PER_BRACKET, hits[1] / SAMPLES_PER_BRACKET, hits[2] / SAMPLES_PER_BRACKET, hits[3] / SAMPLES_PER_BRACKET, goldCap, species, cumulative):.6f}\n"
+            cumulativeStr += f"Odds at Catch #{cumulative + fl}: {cumulative_probability(hits[0] / SAMPLES_PER_BRACKET, hits[1] / SAMPLES_PER_BRACKET, hits[2] / SAMPLES_PER_BRACKET, hits[3] / SAMPLES_PER_BRACKET, goldCap, species, cumulative, fl) * 100 :.6f}%\n"
         embed.add_field(name="Cumulative Probability", value=cumulativeStr, inline=False)
 
     return embed
@@ -485,6 +485,7 @@ class ProbabilityCog(commands.Cog):
         cumulative="Calculate cumulative odds up to this catch number.",
         gold_cap="Gold subskill max to use for cumulative calculation.",
         search_range="Number of unlocked subskill slots to search.",
+        fl="Friendship level offset for cumulative calculation (Default: 0)"
     )
     @app_commands.choices(
         ingredients=[
@@ -532,6 +533,7 @@ class ProbabilityCog(commands.Cog):
         cumulative: int = -1,
         gold_cap: int = 3,
         search_range: int = 3,
+        fl: int = 0
     ):
         if masterDB is None:
             await interaction.response.send_message("The probability database is still building. Please try again in a few minutes.", ephemeral=True)
@@ -611,7 +613,7 @@ class ProbabilityCog(commands.Cog):
         nature_down_exclude = np.array([int(i) for i in nature_down_exclude.split(",")], dtype=np.int8) if nature_down_exclude is not None else None
 
         results = queryDatabase(masterDB, reqSubskills, optSubskills, optional_amount, nature_up, nature_down, nature_down_exclude, ingredients, search_range, allow_subseeds)
-        embed = generateEmbed(results, reqSubskills, optSubskills, optional_amount, nature_up, nature_down, nature_down_exclude, ingredients, cumulative, gold_cap, species, search_range)
+        embed = generateEmbed(results, reqSubskills, optSubskills, optional_amount, nature_up, nature_down, nature_down_exclude, ingredients, cumulative, gold_cap, species, search_range, fl)
         embed.set_footer(text=f"Search Range: {search_range}, Total Samples: {TOTAL_SAMPLES}, Generated in {time.time() - start:.2f} seconds")
         await interaction.followup.send(embed=embed)
         print(f"Probability command executed in {time.time() - start:.2f} seconds")
@@ -626,6 +628,9 @@ class ProbabilityCog(commands.Cog):
         nature_down_scores="Comma-separated nature-down score strings like 010 for a -10 penalty.",
         ings="Ingredient combination filter.",
         search_range="Number of unlocked subskill slots to search.",
+        cumulative="Calculate cumulative odds up to this catch number.",
+        gold_cap="Maximum number of guaranteed gold subskills to use for cumulative calculation.",
+        fl="Friendship level offset for cumulative probability calculations."
     )
     @app_commands.choices(
         species=[
@@ -663,6 +668,9 @@ class ProbabilityCog(commands.Cog):
         nature_down_scores: str = "",
         ings: int = -1,
         search_range: int = 3,
+        cumulative: int = -1,
+        gold_cap: int = 3,
+        fl: int = 0
     ):
         if masterDB is None:
             await interaction.response.send_message("The probability database is still building. Please try again in a few minutes.", ephemeral=True)
@@ -749,6 +757,15 @@ class ProbabilityCog(commands.Cog):
             scoresStr += f"\n {hits[i]} Hits - {hits[i] / SAMPLES_PER_BRACKET * 100:.3f}% ± 0.01%"
             scoresStr += f"\n Average Score: {scores[i] / SAMPLES_PER_BRACKET:.2f}\n"
         embed.add_field(name="Results", value=scoresStr, inline=False)
+        if cumulative != -1 and cumulative > 0:
+            cumulativeStr = ""
+            max_step = cumulative // 10
+            for step in range(1, max_step + 1):
+                catch = step * 10
+                cumulativeStr += f"Odds at Catch #{catch + fl}: {cumulative_probability(hits[0] / SAMPLES_PER_BRACKET, hits[1] / SAMPLES_PER_BRACKET, hits[2] / SAMPLES_PER_BRACKET, hits[3] / SAMPLES_PER_BRACKET, gold_cap, species, catch, fl) * 100 :.6f}%\n"
+            if cumulative % 10 != 0:
+                cumulativeStr += f"Odds at Catch #{cumulative + fl}: {cumulative_probability(hits[0] / SAMPLES_PER_BRACKET, hits[1] / SAMPLES_PER_BRACKET, hits[2] / SAMPLES_PER_BRACKET, hits[3] / SAMPLES_PER_BRACKET, gold_cap, species, cumulative, fl) * 100 :.6f}%\n"
+            embed.add_field(name="Cumulative Probability", value=cumulativeStr, inline=False)
         embed.set_footer(text=f"Search Range: {search_range}, Total Samples: {TOTAL_SAMPLES}, Generated in {time.time() - start:.2f} seconds")
         await interaction.followup.send(embed=embed)
         print(f"Advanced Query command executed in {time.time() - start:.2f} seconds")
@@ -787,6 +804,7 @@ class ProbabilityCog(commands.Cog):
             embed.add_field(name=ID_TO_NATURES[i], value="ID:" + str(i), inline=True)
         await interaction.response.send_message(embed=embed)
 
+    """
     @app_commands.command(name="help_probability", description="Get help with the probability command")
     async def helpprobability(self, interaction: discord.Interaction):
         embed = discord.Embed(
@@ -808,6 +826,7 @@ class ProbabilityCog(commands.Cog):
         embed.add_field(name="Gold Subskill Max (`gold_cap`)", value="The maximum number of guaranteed gold subskills to apply when calculating cumulative probability. Enter a number from 0 to 3. (Ignored before Silver Badge) (Default: 3)", inline=False)
         embed.add_field(name="Subskill Search Range (`search_range`)", value="The subskill slots to search up to. Should be selectable with values. (Default: Lv. 50)", inline=False)
         await interaction.response.send_message(embed=embed)
+    """
 
     @app_commands.command(name="math_details", description="Get the math details of the probability calculation")
     async def mathdetails(self, interaction: discord.Interaction):
