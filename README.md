@@ -1,6 +1,14 @@
 # Sleepy Latias
 A discord bot made to simulate Pokemon Sleep subskill probability.
 
+## Why does Probability Matter?
+In a game focused on planning like Pokemon Sleep, probability is crucial to decision-making. The advantages for using probability to evaluate combinations include but are not limited to:
+- **Know how reasonable a hunt is** - You would know whether a hunt is easily doable or extremely unlikely to achieve, so that you can adjust your hunting goals. *(Exclusive to the bot)*
+- **Compare with different Guaranteed Golds** - You would know which amount of guaranteed gold subskills to go for by comparing bracket odds. *(Exclusive to the bot)*
+- **Directly look for complex combinations** - The `/advanced_query` command allows complex searching on a score-based system. *(Exclusive to the bot)*
+- **Make informed investments** - You would know how much a Subskill Seed speeds up the hunting process, or if the Pokemon is worthwhile for investment.
+- **Decide if a Pokemon is good enough** - You can decide whether to stop hunting or keep going based on how likely it is to find a better Pokemon.
+
 ## Usage Guide
 The `/probability` command accepts **twelve** different parameters in total, with **three** being required.
 
@@ -23,7 +31,7 @@ The above command calculates the probability of getting the BFS+HB combo with su
 The `search_range` parameter specifies the Maximum Unlock Level of the subskills to be counted, from level 10 to 80.
 
 #### Nature Specifications
-The `nature_up` and `nature_down` parameters specify the nature of the Pokemon. The `nature_down_exclude` parameters specify which stat drops to avoid.  
+The `nature_up` and `nature_down` parameters specify the nature of the target Pokemon. The `nature_down_exclude` parameters specify which stat drops to avoid.  
 *Example 2*
 ```
 /probability required_subskills: 0,1 species: Standard (5-7 pip) (10/40/100) allow_subseeds: true nature_up: 0 nature_down: 3
@@ -31,7 +39,7 @@ The `nature_up` and `nature_down` parameters specify the nature of the Pokemon. 
 This command calculates the probability with the same conditions as Example 1, except the Pokemon's nature must be Lonely.
 
 #### Ingredient Combo
-The ingredient combo of a pokemon can be specified with the `ingredients` parameter.
+The ingredient combo of the target Pokemon can be specified with the `ingredients` parameter.
 
 ### Optional Subskills
 You can specify optional subskills to be matched. Along with other conditions, if a specified number or more of the optional subskills exists in the Search Range, that Pokemon satisfies the condition to be counted. Otherwise, the Pokemon counts as a fail.  
